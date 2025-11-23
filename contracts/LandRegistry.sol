@@ -2,11 +2,6 @@
 pragma solidity ^0.8.20;
 
 contract LandRegistry {
-    address public admin; // government/admin account
-
-    constructor() {
-        admin = msg.sender; // deployer is admin
-    }
 
     // -------------------- USERS --------------------
     struct User {
@@ -20,25 +15,27 @@ contract LandRegistry {
     event UserRegistered(address indexed user, string name);
     event UserVerified(address indexed user);
 
+    // Anyone can register themselves
     function registerUser(string calldata name) external {
         require(users[msg.sender].addr == address(0), "Already registered");
         users[msg.sender] = User(msg.sender, name, false);
         emit UserRegistered(msg.sender, name);
     }
 
-    function verifyUser(address userAddr) external onlyAdmin {
-        require(users[userAddr].addr != address(0), "User not registered");
-        users[userAddr].verified = true;
-        emit UserVerified(userAddr);
+    // Users can verify themselves
+    function verifyUser() external {
+        require(users[msg.sender].addr != address(0), "User not registered");
+        users[msg.sender].verified = true;
+        emit UserVerified(msg.sender);
     }
 
     // -------------------- PROPERTIES --------------------
     struct Property {
         uint id;
         string location;
-        uint area; // in km^2
+        uint area;
         address owner;
-        uint price; // in wei
+        uint price;
         bool forSale;
     }
 
@@ -49,7 +46,8 @@ contract LandRegistry {
     event PropertyForSale(uint indexed id, uint price);
     event PropertyTransferred(uint indexed id, address indexed from, address indexed to);
 
-    function addProperty(uint id, string calldata location, uint area, uint price) external onlyVerified {
+    // Anyone can add a property
+    function addProperty(uint id, string calldata location, uint area, uint price) external {
         require(properties[id].id == 0, "Property already exists");
         properties[id] = Property(id, location, area, msg.sender, price, false);
         propertyIds.push(id);
@@ -65,16 +63,6 @@ contract LandRegistry {
         emit PropertyForSale(id, price);
     }
 
-    // -------------------- PURCHASE / SALE --------------------
-    struct Purchase {
-        address buyer;
-        uint amount;
-        bool exists;
-    }
-
-    mapping(uint => Purchase) public pendingPurchases;
-
-    // Buyer initiates purchase by sending ETH
     function initiatePurchase(uint id) external payable {
         Property storage p = properties[id];
         require(p.id != 0 && p.forSale, "Not for sale");
@@ -82,8 +70,7 @@ contract LandRegistry {
         pendingPurchases[id] = Purchase(msg.sender, msg.value, true);
     }
 
-    // Admin confirms payment and finalizes sale
-    function confirmPayment(uint id) external onlyAdmin {
+    function confirmPayment(uint id) external {
         Purchase memory pr = pendingPurchases[id];
         Property storage p = properties[id];
         require(pr.exists, "No pending purchase");
@@ -92,11 +79,9 @@ contract LandRegistry {
         address buyer = pr.buyer;
         uint amount = pr.amount;
 
-        // Transfer funds to seller
         (bool sent,) = seller.call{value: amount}("");
         require(sent, "Transfer failed");
 
-        // Transfer ownership
         p.owner = buyer;
         p.forSale = false;
         delete pendingPurchases[id];
@@ -104,7 +89,6 @@ contract LandRegistry {
         emit PropertyTransferred(id, seller, buyer);
     }
 
-    // -------------------- INHERITANCE / DIRECT TRANSFER --------------------
     function transferProperty(uint id, address newOwner) external {
         Property storage p = properties[id];
         require(p.id != 0, "Property does not exist");
@@ -114,6 +98,14 @@ contract LandRegistry {
         p.forSale = false;
         emit PropertyTransferred(id, oldOwner, newOwner);
     }
+
+    struct Purchase {
+        address buyer;
+        uint amount;
+        bool exists;
+    }
+
+    mapping(uint => Purchase) public pendingPurchases;
 
     // -------------------- GETTERS --------------------
     function getProperty(uint id) external view returns (Property memory) {
@@ -130,17 +122,6 @@ contract LandRegistry {
 
     function getUser(address addr) external view returns (User memory) {
         return users[addr];
-    }
-
-    // -------------------- MODIFIERS --------------------
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Not admin");
-        _;
-    }
-
-    modifier onlyVerified() {
-        require(users[msg.sender].verified, "User not verified");
-        _;
     }
 
     // Accept plain ETH if needed

@@ -10,11 +10,11 @@ task("export-accounts", "Exports Hardhat accounts to JSON")
       return;
     }
 
-    // For Hardhat local network, accounts are in hre.network.config.accounts
-    const accounts = hre.network.config.accounts; // Array of private keys
-    if (!accounts || accounts.length === 0) {
-      throw new Error("No accounts found in Hardhat config");
-    }
+    const accounts = hre.network.config.accounts.map((pk, i) => ({
+      address: hre.ethers.utils.computeAddress(pk),
+      privateKey: pk,
+      balance: "10000000000000000000000"
+    }));
 
     const json = {
       accounts,
